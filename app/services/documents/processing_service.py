@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.models.document import Document, DocumentStatus
-from app.models.document import DocumentContent
+from app.models.document import DocumentText
 from app.services.documents.text_extraction import extract_text_pages
 
 
@@ -19,7 +19,7 @@ def process_document(document: Document, db: Session) -> None:
             ]
         }
 
-        document_content = DocumentContent(document_id=document.id,content=content,)
+        document_content = DocumentText(document_id=document.id,content=content,)
         db.add(document_content)
         document.status = DocumentStatus.COMPLETED
         db.commit()
