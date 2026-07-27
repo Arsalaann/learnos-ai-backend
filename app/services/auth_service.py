@@ -11,6 +11,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+#for first time login, we will use this function to authenticate user and generate access token
 def authenticate_user(db: Session, credentials: UserLogin):
     user = find_user_by_email(db, credentials.email)
     if user is None:
@@ -23,6 +24,7 @@ def authenticate_user(db: Session, credentials: UserLogin):
     logger.info(f"User {user.email} authenticated successfully.")
     return {"access_token": access_token,"token_type": "bearer"}
 
+#for subsequent requests, we will use this function to load the current user based on the access token
 def load_current_user(db: Session, token: str) -> User:
     payload = verify_access_token(token)
     user_id = int(payload["sub"])
