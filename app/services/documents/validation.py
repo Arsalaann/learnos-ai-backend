@@ -6,7 +6,7 @@ from fastapi import HTTPException, UploadFile
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
-async def validate_pdf(file: UploadFile) -> None:
+async def validate_upload(file: UploadFile) -> None:
     # 1. Validate extension
     if Path(file.filename).suffix.lower() != ".pdf":
         raise HTTPException(
