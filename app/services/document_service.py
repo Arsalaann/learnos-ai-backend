@@ -1,7 +1,7 @@
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from app.models.document import Document,DocumentContent,DocumentStatus
+from app.models.document import Document,DocumentContent
 from app.models.user import User
 
 from app.services.documents.validation import validate_upload
@@ -15,53 +15,35 @@ async def upload_document(file: UploadFile,current_user: User,db: Session) -> Do
 
     stored_file = await save_file(file=file,user_id=current_user.id)
 
-    document = Document(
-        user_id=current_user.id,
-        original_filename=file.filename,
-        storage_path=stored_file.storage_path,
-        upload_directory=stored_file.upload_directory,
-        content_type=file.content_type,
-        file_size=file.size,
-        status=DocumentStatus.UPLOADED,
-    )
-
-    db.add(document)
-
     try:
+        extraction_result = extract_document(
+            content_type=file.content_type,
+            storage_path=stored_file.storage_path,
+            upload_directory=stored_file.upload_directory
+        )
+
+        document = Document(
+            user_id=current_user.id,
+            original_filename=file.filename,
+            storage_path=stored_file.storage_path,
+            upload_directory=stored_file.upload_directory,
+            content_type=file.content_type,
+            file_size=file.size,
+        )
+
+        db.add(document)
+        db.flush()
+
+        if extraction_result.texts:
+            db.add(DocumentContent(document_id=document.id,content=extraction_result.texts))
+
         db.commit()
         db.refresh(document)
 
+        return document
+
     except Exception:
+
         db.rollback()
         delete_upload(stored_file.upload_directory)
         raise
-
-    document.status = DocumentStatus.PROCESSING
-    db.commit()
-
-    try:
-        extraction_result = extract_document(document=document,upload_directory=stored_file.upload_directory)
-        if extraction_result.texts:
-
-            db.add(
-                DocumentContent(
-                    document_id=document.id,
-                    content=extraction_result.texts,
-                )
-            )
-
-        # Image persistence will be added later.
-
-        document.status = DocumentStatus.COMPLETED
-        db.commit()
-
-    except Exception:
-
-        db.rollback()
-
-        document.status = DocumentStatus.FAILED
-        db.commit()
-
-        raise
-
-    return document
