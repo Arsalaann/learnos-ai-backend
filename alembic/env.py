@@ -8,7 +8,9 @@ from alembic import context
 from app.core.config import settings
 from app.models.base import Base
 from app.models.user import User
-from app.models.document import Document
+from app.models.document import Document,DocumentContent
+from app.models.workspace import Workspace
+from app.models.message import Message
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

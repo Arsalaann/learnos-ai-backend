@@ -1,4 +1,5 @@
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from app.schemas.workspace import WorkspaceResponse
 from typing import Optional
 
 
@@ -21,3 +22,7 @@ class UserUpdate(BaseModel):
 class UserLogin(BaseModel):
     email: str
     password: str
+    
+class MeResponse(BaseModel):
+    full_name: str
+    workspaces: list[WorkspaceResponse]

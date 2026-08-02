@@ -1,2 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
 .env
-.venv
+
+# Runtime storage
+storage/
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store

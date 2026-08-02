@@ -5,9 +5,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 
 from app.models.user import User
-from app.schemas.user import UserCreate, UserUpdate
+from app.schemas.user import UserCreate, UserUpdate, MeResponse
 from app.core.security import hash_password
 
+from app.services.workspace_service import get_workspaces
 
 
 def find_user_by_id(db: Session, user_id: int):
@@ -25,6 +26,14 @@ def get_user_by_id(db: Session, user_id: int):
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="User not found")
     return user
+
+
+def get_me(db: Session, current_user: User):
+    workspaces = get_workspaces(db, current_user)
+    return MeResponse(
+        full_name=current_user.full_name,
+        workspaces=workspaces,
+    )
 
 def create_user(db: Session, user_data: UserCreate):
     hashed_password = hash_password(user_data.password)

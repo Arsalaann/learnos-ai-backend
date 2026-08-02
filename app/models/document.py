@@ -1,7 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, func
-from enum import Enum
+from sqlalchemy import ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -9,9 +8,11 @@ from .base import Base
 
 class Document(Base):
     __tablename__ = "documents"
+    
+    __table_args__ = (UniqueConstraint("workspace_id", "original_filename", name="uq_document_workspace_filename"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     storage_path: Mapped[str] = mapped_column(String(1000), nullable=False)
     upload_directory: Mapped[str] = mapped_column(String(1000), nullable=False)
