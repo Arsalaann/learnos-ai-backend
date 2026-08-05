@@ -14,6 +14,8 @@ class WorkspaceUpdate(BaseModel):
 class WorkspaceResponse(BaseModel):
     id: int
     title: str
+    is_default: bool
+    documents_count: int | None = None
     created_at: datetime
     updated_at: datetime
 

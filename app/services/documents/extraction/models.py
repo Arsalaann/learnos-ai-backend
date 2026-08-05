@@ -1,12 +1,14 @@
 from dataclasses import dataclass
+
 from pydantic import BaseModel, Field
 
 __all__ = [
-    "RawSpan",
-    "RawLine",
-    "RawBlock",
-    "ImageBlock",
+    "ExtractedBlock",
     "ExtractionResult",
+    "ImageBlock",
+    "RawBlock",
+    "RawLine",
+    "RawSpan",
 ]
 
 
@@ -37,6 +39,15 @@ class RawBlock:
     bottom: float
 
 
+class ExtractedBlock(BaseModel):
+    index: int
+    type: str
+    text: str
+    source_type: str
+    source_start: int | None = None
+    source_end: int | None = None
+
+
 @dataclass(slots=True)
 class ImageBlock:
     page: int
@@ -45,5 +56,5 @@ class ImageBlock:
 
 
 class ExtractionResult(BaseModel):
-    texts: list[dict] = Field(default_factory=list)
+    blocks: list[ExtractedBlock] = Field(default_factory=list)
     images: list[ImageBlock] = Field(default_factory=list)

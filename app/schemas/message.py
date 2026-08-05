@@ -2,17 +2,22 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.message import MessageRole
+from app.models.message import MessageRole, MessageType
+from app.schemas.document_artifact import DocumentArtifactResponse
+
 
 class MessageCreate(BaseModel):
-    content: dict
-    document_id: int | None = None
-    
+    content: str
+
+
 class MessageResponse(BaseModel):
     id: int
-    document_id: int | None
+    conversation_id: int
     role: MessageRole
-    content: dict
+    message_type: MessageType
+    content: dict | None
+    artifact_id: int | None
+    artifact: DocumentArtifactResponse | None
     created_at: datetime
     updated_at: datetime
 

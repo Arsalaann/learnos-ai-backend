@@ -1,13 +1,13 @@
 from fastapi import HTTPException, status
-
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.workspace import Workspace
+from app.models.document import Document
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate
-
 from app.services.documents.storage import delete_workspace_uploads
+
 
 def find_workspace_by_title(db: Session, current_user: User, title: str):
 
@@ -44,18 +44,54 @@ def get_workspace_by_id(db: Session, workspace_id: int):
     return workspace
 
 
-def get_workspaces(db: Session, current_user: User):
+# def get_workspaces(db: Session, current_user: User):
 
+#     statement = (
+#         select(Workspace)
+#         .where(Workspace.user_id == current_user.id)
+#         .order_by(Workspace.updated_at.desc())
+#     )
+
+#     result = db.execute(statement)
+
+#     return result.scalars().all()
+
+
+def get_workspaces(db: Session, current_user: User):
     statement = (
-        select(Workspace)
+        select(
+            Workspace.id,
+            Workspace.title,
+            Workspace.is_default,
+            Workspace.created_at,
+            Workspace.updated_at,
+            func.count(Document.id).label("documents_count"),
+        )
+        .outerjoin(Document, Workspace.id == Document.workspace_id)
         .where(Workspace.user_id == current_user.id)
-        .order_by(Workspace.updated_at.desc())
+        .group_by(
+            Workspace.id,
+            Workspace.title,
+            Workspace.is_default,
+            Workspace.created_at,
+            Workspace.updated_at,
+        )
+        .order_by(Workspace.is_default.desc(), Workspace.updated_at.desc())
     )
 
     result = db.execute(statement)
 
-    return result.scalars().all()
+    return result.mappings().all()
 
+
+def create_default_workspace(db: Session, user: User):
+    workspace = Workspace(
+        user_id=user.id,
+        title="My Documents",
+        is_default=True,
+    )
+    db.add(workspace)
+    return workspace
 
 def create_workspace(db: Session, current_user: User, workspace_data: WorkspaceCreate):
 
@@ -72,12 +108,11 @@ def create_workspace(db: Session, current_user: User, workspace_data: WorkspaceC
 
 
 def update_workspace(db: Session, workspace: Workspace, workspace_update: WorkspaceUpdate):
-
+    if workspace.is_default:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The default workspace cannot be renamed.")
     update_data = workspace_update.model_dump(exclude_unset=True)
-
     for field, value in update_data.items():
         setattr(workspace, field, value)
-
     db.commit()
     db.refresh(workspace)
 
@@ -85,6 +120,8 @@ def update_workspace(db: Session, workspace: Workspace, workspace_update: Worksp
 
 
 def delete_workspace(db: Session, workspace: Workspace):
+    if workspace.is_default:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The default workspace cannot be deleted.")
     workspace_id = workspace.id
     db.delete(workspace)
     db.commit()

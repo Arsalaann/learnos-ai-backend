@@ -1,14 +1,12 @@
 from fastapi import HTTPException, status
-
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
-from app.models.user import User
-from app.schemas.user import UserCreate, UserUpdate, MeResponse
 from app.core.security import hash_password
-
-from app.services.workspace_service import get_workspaces
+from app.models.user import User
+from app.schemas.user import MeResponse, UserCreate, UserUpdate
+from app.services.workspace_service import create_default_workspace, get_workspaces
 
 
 def find_user_by_id(db: Session, user_id: int):
@@ -35,15 +33,19 @@ def get_me(db: Session, current_user: User):
         workspaces=workspaces,
     )
 
+
 def create_user(db: Session, user_data: UserCreate):
     hashed_password = hash_password(user_data.password)
-    user = User(full_name=user_data.full_name,email=user_data.email,hashed_password=hashed_password)
+    user = User(full_name=user_data.full_name, email=user_data.email, hashed_password=hashed_password)
     db.add(user)
     try:
+        db.flush()
+        create_default_workspace(db, user)
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException( status_code=status.HTTP_409_CONFLICT,detail="Email already exists")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+
     db.refresh(user)
     return user
 

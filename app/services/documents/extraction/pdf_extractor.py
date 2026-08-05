@@ -1,35 +1,34 @@
-from pathlib import Path
 from collections import defaultdict
-import fitz
+from pathlib import Path
 from pprint import pprint
+
+import fitz
+
+from app.services.documents.constants import SPACE_WIDTH, Y_TOLERANCE
 from app.services.documents.extraction.models import *
 
 
-SPACE_WIDTH = 4
-Y_TOLERANCE = 2.0
-
-
-
-
-
 def extract_images(pdf: fitz.Document, upload_directory: str) -> list[ImageBlock]:
-    
-    if upload_directory=='':  #this block can be removed after testing
+
+    if not upload_directory:
         return []
-    
-    images: list[ImageBlock] = []
 
     images_directory = Path(upload_directory) / "artifacts" / "images"
+    images_directory.mkdir(parents=True, exist_ok=True)
 
-    saved_images: dict[int, str] = {}
+    images: list[ImageBlock] = []
+
+    saved_images: dict[int, tuple[str, str]] = {}
     image_counter = 1
 
     for page_number, page in enumerate(pdf, start=1):
+
         for image in page.get_images(full=True):
+
             xref = image[0]
 
             if xref in saved_images:
-                image_path = saved_images[xref]
+                image_path, extension = saved_images[xref]
 
             else:
                 extracted = pdf.extract_image(xref)
@@ -41,21 +40,28 @@ def extract_images(pdf: fitz.Document, upload_directory: str) -> list[ImageBlock
                 with image_path.open("wb") as file:
                     file.write(extracted["image"])
 
-                saved_images[xref] = (str(image_path), extension)
-                image_path, extension = saved_images[xref]
+                image_path = str(image_path)
+
+                saved_images[xref] = (
+                    image_path,
+                    extension,
+                )
+
                 image_counter += 1
 
             images.append(
                 ImageBlock(
                     page=page_number,
-                    path=str(image_path),
+                    path=image_path,
                     format=extension,
                 )
             )
 
     return images
 
+
 def build_raw_span(span: dict) -> RawSpan:
+
     return RawSpan(
         text=span["text"],
         font=span["font"],
@@ -63,7 +69,9 @@ def build_raw_span(span: dict) -> RawSpan:
         bbox=span["bbox"],
     )
 
+
 def normalize_lines(block: dict) -> list[dict]:
+
     grouped: dict[float, list[dict]] = defaultdict(list)
 
     for line in block["lines"]:
@@ -71,13 +79,15 @@ def normalize_lines(block: dict) -> list[dict]:
         if not line["spans"]:
             continue
 
-        y = round(line["spans"][0]["bbox"][1] / Y_TOLERANCE) * Y_TOLERANCE
+        y = round(
+            line["spans"][0]["bbox"][1] / Y_TOLERANCE
+        ) * Y_TOLERANCE
 
         grouped[y].extend(line["spans"])
 
     normalized_lines: list[dict] = []
 
-    for y in sorted(grouped.keys()):
+    for y in sorted(grouped):
 
         spans = sorted(
             grouped[y],
@@ -92,14 +102,18 @@ def normalize_lines(block: dict) -> list[dict]:
 
     return normalized_lines
 
+
 def build_raw_line(page: int, line: dict) -> RawLine:
-    spans = [build_raw_span(span) for span in line["spans"]]
+
+    spans = [
+        build_raw_span(span)
+        for span in line["spans"]
+    ]
 
     if not spans:
         raise ValueError("Line contains no spans.")
 
     text_parts: list[str] = []
-
     previous_right: float | None = None
 
     for span in spans:
@@ -117,10 +131,17 @@ def build_raw_line(page: int, line: dict) -> RawLine:
 
         previous_right = span.bbox[2]
 
-    text = "".join(text_parts).rstrip()
+    text = "".join(text_parts).strip()
 
-    left = min(span.bbox[0] for span in spans)
-    top = min(span.bbox[1] for span in spans)
+    left = min(
+        span.bbox[0]
+        for span in spans
+    )
+
+    top = min(
+        span.bbox[1]
+        for span in spans
+    )
 
     return RawLine(
         page=page,
@@ -128,10 +149,14 @@ def build_raw_line(page: int, line: dict) -> RawLine:
         left=left,
         top=top,
     )
-def build_raw_lines(pdf: fitz.Document) -> list[RawLine]:
-    raw_lines: list[RawLine] = []
+
+
+def build_raw_blocks(pdf: fitz.Document) -> list[RawBlock]:
+
+    raw_blocks: list[RawBlock] = []
 
     for page_number, page in enumerate(pdf, start=1):
+
         page_dict = page.get_text("dict")
 
         for block in page_dict["blocks"]:
@@ -140,6 +165,8 @@ def build_raw_lines(pdf: fitz.Document) -> list[RawLine]:
                 continue
 
             normalized_lines = normalize_lines(block)
+
+            raw_lines: list[RawLine] = []
 
             for line in normalized_lines:
 
@@ -151,53 +178,188 @@ def build_raw_lines(pdf: fitz.Document) -> list[RawLine]:
                 if raw_line.text:
                     raw_lines.append(raw_line)
 
-    return raw_lines
-def build_document_pages(raw_lines: list[RawLine]) -> list[dict]:
-    if not raw_lines:
-        return []
+            if not raw_lines:
+                continue
 
-    pages: list[dict] = []
+            spans = [
+                build_raw_span(span)
+                for line in normalized_lines
+                for span in line["spans"]
+            ]
 
-    current_page = raw_lines[0].page
-    current_lines: list[str] = []
+            if not spans:
+                continue
 
-    for line in raw_lines:
-
-        if line.page != current_page:
-
-            pages.append(
-                {
-                    "page": current_page,
-                    "text": "\n".join(current_lines),
-                }
+            raw_blocks.append(
+                RawBlock(
+                    page=page_number,
+                    lines=raw_lines,
+                    max_font_size=max(
+                        span.size
+                        for span in spans
+                    ),
+                    left=min(
+                        span.bbox[0]
+                        for span in spans
+                    ),
+                    right=max(
+                        span.bbox[2]
+                        for span in spans
+                    ),
+                    top=min(
+                        span.bbox[1]
+                        for span in spans
+                    ),
+                    bottom=max(
+                        span.bbox[3]
+                        for span in spans
+                    ),
+                )
             )
 
-            current_page = line.page
-            current_lines = []
-
-        current_lines.append(line.text)
-
-    pages.append(
-        {
-            "page": current_page,
-            "text": "\n".join(current_lines),
-        }
-    )
-
-    return pages
+    return raw_blocks
 
 
-def extract_pdf(file_path: Path, upload_directory: str) -> ExtractionResult:
+
+
+
+def classify_block(
+    block: RawBlock,
+    body_font_size: float,
+) -> str:
+
+    text = " ".join(
+        line.text
+        for line in block.lines
+    ).strip()
+
+    if not text:
+        return "unknown"
+
+    if block.max_font_size > body_font_size * 1.25:
+        return "heading"
+
+    return "paragraph"
+
+
+
+
+
+def estimate_body_font_size(
+    blocks: list[RawBlock],
+) -> float:
+
+    if not blocks:
+        return 0.0
+
+    font_sizes = [
+        block.max_font_size
+        for block in blocks
+    ]
+
+    font_sizes.sort()
+
+    return font_sizes[len(font_sizes) // 2]
+
+
+
+
+
+
+def build_extracted_blocks(
+    raw_blocks: list[RawBlock],
+) -> list[ExtractedBlock]:
+
+    if not raw_blocks:
+        return []
+
+    extracted_blocks: list[ExtractedBlock] = []
+
+    current_page = raw_blocks[0].page
+    page_blocks: list[RawBlock] = []
+
+    pages: list[list[RawBlock]] = []
+
+    for block in raw_blocks:
+
+        if block.page != current_page:
+
+            pages.append(page_blocks)
+
+            current_page = block.page
+            page_blocks = []
+
+        page_blocks.append(block)
+
+    if page_blocks:
+        pages.append(page_blocks)
+
+    index = 0
+
+    for page_blocks in pages:
+
+        body_font_size = estimate_body_font_size(
+            page_blocks
+        )
+
+        for block in page_blocks:
+
+            text = "\n".join(
+                line.text
+                for line in block.lines
+            ).strip()
+
+            if not text:
+                continue
+
+            block_type = classify_block(
+                block,
+                body_font_size,
+            )
+
+            extracted_blocks.append(
+                ExtractedBlock(
+                    index=index,
+                    type=block_type,
+                    text=text,
+                    source_type="page",
+                    source_start=block.page,
+                    source_end=block.page,
+                )
+            )
+
+            index += 1
+
+    return extracted_blocks
+
+
+
+
+
+
+def extract_pdf(
+    file_path: Path,
+    upload_directory: str,
+) -> ExtractionResult:
+
     with fitz.open(file_path) as pdf:
-        raw_lines = build_raw_lines(pdf)
-        images = extract_images(pdf, upload_directory)
+
+        raw_blocks = build_raw_blocks(pdf)
+
+        images = extract_images(
+            pdf,
+            upload_directory,
+        )
 
     return ExtractionResult(
-        texts=build_document_pages(raw_lines),
+        blocks=build_extracted_blocks(
+            raw_blocks
+        ),
         images=images,
     )
-
-
+    
+    
+    
 if __name__ == "__main__":
     e=extract_pdf('/home/luser/session_mastery_summary.pdf',"")
 

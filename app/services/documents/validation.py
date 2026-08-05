@@ -2,38 +2,57 @@ from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
 
-
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
+ALLOWED_FILE_TYPES = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
 async def validate_upload(file: UploadFile) -> None:
-    # 1. Validate extension
-    if Path(file.filename).suffix.lower() != ".pdf":
+
+    extension = Path(file.filename).suffix.lower()
+
+    expected_content_type = ALLOWED_FILE_TYPES.get(extension)
+
+    if expected_content_type is None:
         raise HTTPException(
             status_code=400,
-            detail="Only PDF files are allowed.",
+            detail="Unsupported file type. Only PDF and DOCX files are allowed.",
         )
 
-    # 2. Validate MIME type
-    if file.content_type != "application/pdf":
+    if file.content_type != expected_content_type:
         raise HTTPException(
             status_code=400,
             detail="Invalid content type.",
         )
 
-    # 3. Validate file signature (magic bytes)
-    header = await file.read(5)
+    # Validate file signature.
+    if extension == ".pdf":
 
-    if header != b"%PDF-":
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid PDF file.",
-        )
+        header = await file.read(5)
 
-    # Reset pointer after reading header
+        if header != b"%PDF-":
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid PDF file.",
+            )
+
+    elif extension == ".docx":
+
+        header = await file.read(4)
+
+        if header != b"PK\x03\x04":
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid DOCX file.",
+            )
+
     await file.seek(0)
 
-    # 4. Validate file size
+    # Validate file size.
     content = await file.read()
 
     if len(content) > MAX_FILE_SIZE:
@@ -42,5 +61,4 @@ async def validate_upload(file: UploadFile) -> None:
             detail="File size exceeds 10 MB.",
         )
 
-    # Reset pointer again so StorageService can save the file
     await file.seek(0)
